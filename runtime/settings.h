@@ -56,6 +56,11 @@ typedef struct {
     int inplace_reads;    // Turnip: draws sample targets they write as they are (vulkan/exec.c resolve_feedback); off: copies
     int turnip_lrz;       // Turnip's low-resolution Z; off: TU_DEBUG=nolrz before the driver loads (vulkan/device.c)
     bool log_file;        // the log in a file as well (platform/android.c), to send with a report
+    bool async_shader_compile;    // experimental: asynchronous shader compilation on background threads
+    bool aggressive_tile_caching; // experimental: optimized tile caching / reduced barriers for Mali GPUs
+    bool zero_copy_uniforms;      // experimental: zero-copy uniform buffers with persistent mapped memory
+    bool dynamic_resolution_boost;// experimental: aggressive dynamic resolution scaling for stable 60 fps
+    bool ultra_low_latency_pacer; // experimental: ultra-low latency frame pacing and fence sync
     char gpu_model[64];   // the GPU of the last start ("Adreno (TM) 830v1"): turnip_lrz's Automatic, before the driver
     bool heap_file;       // the game's memory as GPU memory through an exported file mapped at its address, where the driver
                           // can't place it (Mali, Xclipse; experimental): vulkan/exec.c vk_heap_place, at the game's start

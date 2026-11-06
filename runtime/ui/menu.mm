@@ -577,6 +577,17 @@ static void tab_display(void) {
                        "and may run shorter or out of step with their sound (at 60 fps the new game's opening gave Link "
                        "control 2 s early). Videos and menus stay at 30. Applies at once.");
     }
+    opt_section("Experimental Performance (Mali / 60 FPS)");
+    opt_toggle("Async Shader Compilation", &g_settings.async_shader_compile, true,
+               "Compiles Vulkan shader pipelines asynchronously on background threads to eliminate stutters.");
+    opt_toggle("Aggressive Tile Caching", &g_settings.aggressive_tile_caching, true,
+               "Optimizes tile caching and reduces redundant pipeline barriers for Mali GPUs.");
+    opt_toggle("Zero-Copy Uniform Buffers", &g_settings.zero_copy_uniforms, true,
+               "Uses persistently mapped memory for uniform buffers to eliminate CPU memcpy overhead.");
+    opt_toggle("Dynamic Resolution Boost", &g_settings.dynamic_resolution_boost, true,
+               "Aggressively scales internal resolution during heavy scenes to maintain constant 60 FPS.");
+    opt_toggle("Ultra-Low Latency Pacer", &g_settings.ultra_low_latency_pacer, true,
+               "Optimizes frame pacing and Vulkan fence synchronization for 120Hz/60Hz displays.");
 #endif
 
     opt_section("Rendering");

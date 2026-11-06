@@ -63,6 +63,11 @@ Settings g_settings = {
     .upscaler = UPSCALE_SGSR1,  // (one pass: ~1 ms on the Adreno 830 to 2560x1440, FSR 1's two ~2.7 ms; 40 fps against 38)
     .native_code = false,       // (an experiment: runtime/native.c)
     .sync_lag = true,           // (a few more fps; the CPU's reads of GPU results a frame old: nvn/objects.c nvnSyncWait)
+    .async_shader_compile = true,
+    .aggressive_tile_caching = true,
+    .zero_copy_uniforms = true,
+    .dynamic_resolution_boost = true,
+    .ultra_low_latency_pacer = true,
     .out_lines = OUT_AUTO,      // (POCO F7 Ultra, 3200x1440, 1.8.2's Great Plateau: GPU 22.8 ms a frame at the screen's,
                                 // 18.6 at 1080 lines with a larger scene - the final image's passes over 2.2x the pixels)
 #else
@@ -222,6 +227,11 @@ void settings_reset_defaults(void) {
     g_settings.sync_lag = d->sync_lag;
     g_settings.native_code = d->native_code;
     g_settings.files_in_place = d->files_in_place;
+    g_settings.async_shader_compile = d->async_shader_compile;
+    g_settings.aggressive_tile_caching = d->aggressive_tile_caching;
+    g_settings.zero_copy_uniforms = d->zero_copy_uniforms;
+    g_settings.dynamic_resolution_boost = d->dynamic_resolution_boost;
+    g_settings.ultra_low_latency_pacer = d->ultra_low_latency_pacer;
 #endif
 }
 
@@ -268,6 +278,11 @@ void settings_load(void) {
         else if (!strcmp(key, "sync_lag")) g_settings.sync_lag = atoi(val) != 0;
         else if (!strcmp(key, "native_code")) g_settings.native_code = atoi(val) != 0;
         else if (!strcmp(key, "files_in_place")) g_settings.files_in_place = atoi(val) != 0;
+        else if (!strcmp(key, "async_shader")) g_settings.async_shader_compile = atoi(val) != 0;
+        else if (!strcmp(key, "tile_cache")) g_settings.aggressive_tile_caching = atoi(val) != 0;
+        else if (!strcmp(key, "zero_copy")) g_settings.zero_copy_uniforms = atoi(val) != 0;
+        else if (!strcmp(key, "dyn_res_boost")) g_settings.dynamic_resolution_boost = atoi(val) != 0;
+        else if (!strcmp(key, "low_latency_pacer")) g_settings.ultra_low_latency_pacer = atoi(val) != 0;
         else if (!strcmp(key, "gpu_heap")) g_settings.gpu_heap = !strcmp(val, "auto") ? -1 : atoi(val) != 0;
         else if (!strcmp(key, "inplace_reads")) g_settings.inplace_reads = !strcmp(val, "auto") ? -1 : atoi(val) != 0;
         else if (!strcmp(key, "turnip_lrz")) g_settings.turnip_lrz = !strcmp(val, "auto") ? -1 : atoi(val) != 0;
@@ -374,6 +389,9 @@ void settings_save(void) {
     fprintf(f, "cutscenes_60 = %d\n", g_settings.event_fps_unlock);
     fprintf(f, "shader_int32 = %d\nsync_lag = %d\nnative_code = %d\nfiles_in_place = %d\n", g_settings.shader_int32,
             g_settings.sync_lag, g_settings.native_code, g_settings.files_in_place);
+    fprintf(f, "async_shader = %d\ntile_cache = %d\nzero_copy = %d\ndyn_res_boost = %d\nlow_latency_pacer = %d\n",
+            g_settings.async_shader_compile, g_settings.aggressive_tile_caching, g_settings.zero_copy_uniforms,
+            g_settings.dynamic_resolution_boost, g_settings.ultra_low_latency_pacer);
     static const char *const tri[] = {"auto", "0", "1"};  // (-1 / 0 / 1)
 #define TRI(v) tri[(v) < 0 ? 0 : (v) ? 2 : 1]
     fprintf(f, "gpu_heap = %s\ninplace_reads = %s\nturnip_lrz = %s\nlog_file = %d\ngpu_model = %s\n", TRI(g_settings.gpu_heap),
