@@ -56,6 +56,7 @@ jobs:
       - name: Build APK with Gradle
         run: |
           cd android/botwrecompandroid
+          chmod +x gradlew
           ./gradlew assembleDebug
 
       - name: Upload APK artifact
