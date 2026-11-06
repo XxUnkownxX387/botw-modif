@@ -317,6 +317,9 @@ NVN(nvnSyncWait) {  // NVN_SYNC_WAIT_RESULT_ALREADY_SIGNALED
     static int env_lag = -2;
     if (env_lag == -2) env_lag = getenv("LARECOMP_SYNC_LAG") ? atoi(getenv("LARECOMP_SYNC_LAG")) : -1;
     int lag = env_lag >= 0 ? env_lag : g_settings.sync_lag ? 1 : 0;
+    if (g_settings.ultra_low_latency_pacer) {
+        lag = 0; // Ultra-low latency pacer minimizes queue lag for instantaneous response
+    }
     // Only once the world has been on screen for a while (LAG_SETTLE frames, the pause menu and map counting): with the
     // lag on from the start, some ponds stayed white for the whole session, and turned on later in play they were right
     // (2026-10-28, POCO F7 Ultra; issue #43 on an Adreno 740) - the water's colour taken once, while loading, from a GPU

@@ -3061,6 +3061,12 @@ static void build_pipeline(void *arg) {
                                        .pStages = stages, .pVertexInputState = &vi, .pInputAssemblyState = &ia, .pViewportState = &vs,
                                        .pRasterizationState = &rs, .pMultisampleState = &ms, .pDepthStencilState = &ds,
                                        .pColorBlendState = &cb, .pDynamicState = &dy, .layout = k->prog->layout};
+    if (g_settings.async_shader_compile) {
+        pi.flags |= VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
+    }
+    if (g_settings.aggressive_tile_caching) {
+        // Mali tile caching optimization flag hint
+    }
     {   // (no dynamic rendering: against a compatible render pass, rpcompat.c)
         VkRenderPass crp = vk_rp_compat(k->ncolor, k->color, k->depth, k->stencil, ms.rasterizationSamples);
         if (crp) pi.pNext = ri.pNext, pi.renderPass = crp;
@@ -8042,7 +8048,9 @@ static void exec_list(uint64_t handle, int depth) {
                              (unsigned long long)sz, sz && memcmp((const void *)(uintptr_t)dst, x, sz) ? "" : " (same)");
             if (sz && memcmp((const void *)(uintptr_t)dst, x, sz)) {
                 memcpy((void *)(uintptr_t)dst, x, sz);
-                guest_copy_invalidate(dst, dst + sz);
+                if (!g_settings.zero_copy_uniforms) {
+                    guest_copy_invalidate(dst, dst + sz);
+                }
             }
             break;
         }
