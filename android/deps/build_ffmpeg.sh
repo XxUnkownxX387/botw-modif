@@ -9,27 +9,43 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 P=$PWD/out
-NDK=${ANDROID_NDK_LINUX:-$HOME/android-ndk-r30}
+if [ -n "${ANDROID_NDK_LINUX:-}" ] && [ -x "$ANDROID_NDK_LINUX/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" ]; then
+    NDK="$ANDROID_NDK_LINUX"
+elif [ -n "${ANDROID_NDK_HOME:-}" ] && [ -x "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" ]; then
+    NDK="$ANDROID_NDK_HOME"
+elif [ -n "${ANDROID_HOME:-}" ] && [ -x "$ANDROID_HOME/ndk/30.0.16248370/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" ]; then
+    NDK="$ANDROID_HOME/ndk/30.0.16248370"
+elif [ -x "$HOME/android-ndk-r30/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" ]; then
+    NDK="$HOME/android-ndk-r30"
+else
+    NDK="${ANDROID_NDK_LINUX:-$HOME/android-ndk-r30}"
+fi
 W=$HOME/botwrecompandroid-ffmpeg
 API=30
 mkdir -p "$W" "$P/include" "$P/lib"
 
 if [ ! -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" ]; then
     curl -fsSL -o "$W/ndk.zip" https://dl.google.com/android/repository/android-ndk-r30-linux.zip
-    # (no unzip here, and Python's zipfile drops symlinks and modes - clang is a link to clang-NN: restored from the
-    # entries' Unix attributes)
-    python3 - "$W/ndk.zip" "$(dirname "$NDK")" <<'PY'
+    EXTRACT_DIR="$(dirname "$NDK")"
+    if [ -z "$EXTRACT_DIR" ] || [ "$EXTRACT_DIR" = "/" ] || [ "$EXTRACT_DIR" = "/ndk" ]; then
+        EXTRACT_DIR="$HOME"
+    fi
+    mkdir -p "$EXTRACT_DIR"
+    python3 - "$W/ndk.zip" "$EXTRACT_DIR" <<'PY'
 import os, stat, sys, zipfile
+target = sys.argv[2]
+if not target or target in ('/', '/ndk'):
+    target = os.path.expanduser('~/')
 z = zipfile.ZipFile(sys.argv[1])
 for i in z.infolist():
     mode = i.external_attr >> 16
-    path = os.path.join(sys.argv[2], i.filename)
+    path = os.path.join(target, i.filename)
     if stat.S_ISLNK(mode):
         os.makedirs(os.path.dirname(path), exist_ok=True)
         if os.path.lexists(path): os.remove(path)
         os.symlink(z.read(i).decode(), path)
     else:
-        z.extract(i, sys.argv[2])
+        z.extract(i, target)
         if mode and not i.is_dir(): os.chmod(path, stat.S_IMODE(mode))
 PY
     rm -f "$W/ndk.zip"

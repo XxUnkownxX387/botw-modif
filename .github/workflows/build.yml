@@ -29,8 +29,6 @@ jobs:
           bash android/deps/build_ffmpeg.sh
           bash android/deps/build_deps.sh
           bash android/deps/build_gen_deps.sh
-        env:
-          ANDROID_NDK_LINUX: ${{ env.ANDROID_HOME }}/ndk/30.0.16248370
 
       - name: Build APK with Gradle
         run: |
