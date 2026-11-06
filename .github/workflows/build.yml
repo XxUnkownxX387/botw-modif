@@ -24,11 +24,34 @@ jobs:
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
           echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;30.0.16248370" "cmake;3.30.4" "platforms;android-30" "platforms;android-36"
 
+      - name: Download and setup Android NDK r30
+        run: |
+          curl -fsSL -o /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r30-linux.zip
+          python3 - /tmp/ndk.zip /home/runner <<'PY'
+          import os, stat, sys, zipfile
+          target = sys.argv[2]
+          z = zipfile.ZipFile(sys.argv[1])
+          for i in z.infolist():
+              mode = i.external_attr >> 16
+              path = os.path.join(target, i.filename)
+              if stat.S_ISLNK(mode):
+                  os.makedirs(os.path.dirname(path), exist_ok=True)
+                  if os.path.lexists(path): os.remove(path)
+                  os.symlink(z.read(i).decode(), path)
+              else:
+                  z.extract(i, target)
+                  if mode and not i.is_dir(): os.chmod(path, stat.S_IMODE(mode))
+          PY
+          rm -f /tmp/ndk.zip
+          ls -la /home/runner/android-ndk-r30
+
       - name: Build dependencies
         run: |
           bash android/deps/build_ffmpeg.sh
           bash android/deps/build_deps.sh
           bash android/deps/build_gen_deps.sh
+        env:
+          ANDROID_NDK_LINUX: /home/runner/android-ndk-r30
 
       - name: Build APK with Gradle
         run: |
