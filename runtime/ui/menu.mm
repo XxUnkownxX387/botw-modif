@@ -588,6 +588,10 @@ static void tab_display(void) {
                "Aggressively scales internal resolution during heavy scenes to maintain constant 60 FPS.");
     opt_toggle("Ultra-Low Latency Pacer", &g_settings.ultra_low_latency_pacer, true,
                "Optimizes frame pacing and Vulkan fence synchronization for 120Hz/60Hz displays.");
+    opt_toggle("In-place feedback reads (Mali / TBDR)", &g_settings.mali_feedback_inplace, false,
+               "Samples the image a draw writes as it is, through the driver's feedback loop, instead of copying it per "
+               "draw: the fastest, when the driver offers the feedback loop (Mali / TBDR). Off: copies. Applies when the "
+               "game starts.");
 #endif
 
     opt_section("Rendering");

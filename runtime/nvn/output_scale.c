@@ -38,8 +38,11 @@ static void dyn_update(double now, double gpu_ms) {
     // the frame rate it keeps: 60 with Frame rate at 60 fps, else 30 - Auto's 60 comes by itself where the GPU has room.
     // (Aiming at Auto's tries for 60 took the scale to its floor while the game stayed at 30: POCO F7 Ultra, 2026-10-25)
     want = g_settings.fps_mode == 2 || g_settings.fps_mode == 4 ? want : g_settings.fps_mode == 3 ? 1000.0 / 20 : 1000.0 / 30;  // (45: its 22 ms)
-    if (g_settings.dynamic_resolution_boost) {
-        want *= 1.08; // More aggressive scaling target to maintain 60 fps stably
+    if (g_settings.dynamic_resolution_boost && framepace_target() >= 60) {
+        // (the boost: tighten the frame budget of a 60 fps target, so the dynamic resolution lowers the internal
+        // resolution before a frame would run over it - the 1.08 it multiplied the budget the wrong way, widening the
+        // target instead of tightening it, and letting the resolution stay high while the frame ran to 18 ms, past 60)
+        want *= 0.9;
     }
 #endif
     g_dyn_dt_sum += dt;

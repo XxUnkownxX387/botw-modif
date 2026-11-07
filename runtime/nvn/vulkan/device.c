@@ -1895,6 +1895,19 @@ bool vk_turnip_heap_on(int setting) {
     if (setting >= 0 || vk_adreno_8xx(g_vk.props.deviceName)) return vk_turnip_path_on(setting);
     return g_vk.map_placed && vk_driver_is_turnip();
 }
+// Mali (ARM, vendor 0x13B5): the TBDR tiler's two cost savers - no submission mid-pass (a pass split stores and reloads
+// its tiles; vulkan/exec.c split_long_pass), and a read of a target a draw writes as it is (resolve_feedback's in-place,
+// when the driver offers the feedback loop; exec.c resolves it through the mali_feedback_inplace setting / env).
+bool vk_driver_is_mali(void) {
+    static int m = -1;
+    if (m < 0 && g_vk.phys) {
+        VkPhysicalDeviceDriverProperties d = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+        VkPhysicalDeviceProperties2 p = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &d};
+        vkGetPhysicalDeviceProperties2(g_vk.phys, &p);
+        m = g_vk.props.vendorID == 0x13B5 ? 1 : 0;
+    }
+    return m > 0;
+}
 static bool g_lrz_at_start = true;
 bool vk_lrz_at_start(void) { return g_lrz_at_start; }  // (the start screen: a change needs a restart)
 static char g_driver_env_at_start[256];  // (the same for the driver's switches, g_settings.driver_env)

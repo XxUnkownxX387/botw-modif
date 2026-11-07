@@ -61,6 +61,8 @@ typedef struct {
     bool zero_copy_uniforms;      // experimental: zero-copy uniform buffers with persistent mapped memory
     bool dynamic_resolution_boost;// experimental: aggressive dynamic resolution scaling for stable 60 fps
     bool ultra_low_latency_pacer; // experimental: ultra-low latency frame pacing and fence sync
+    bool mali_feedback_inplace; // experimental (Mali / TBDR): a draw samples a target it writes as it is (feedback loop)
+                                // (vulkan/exec.c), off: a copy per draw is made instead - LARECOMP_FEEDBACK_INPLACE=1 also
     char gpu_model[64];   // the GPU of the last start ("Adreno (TM) 830v1"): turnip_lrz's Automatic, before the driver
     bool heap_file;       // the game's memory as GPU memory through an exported file mapped at its address, where the driver
                           // can't place it (Mali, Xclipse; experimental): vulkan/exec.c vk_heap_place, at the game's start

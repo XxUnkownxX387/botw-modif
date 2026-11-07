@@ -3528,11 +3528,14 @@ static void resolve_feedback(Prog *pr, uint32_t draw_written) {
                 // the start screen's Driver compatibility; LARECOMP_FEEDBACK_INPLACE=1 on any driver).
                 if (g_inplace_copy < 0) {
                     extern bool vk_driver_is_turnip(void);
+                    extern bool vk_driver_is_mali(void);
                     extern bool vk_turnip_path_on(int setting);
-                    bool inplace = getenv("LARECOMP_FEEDBACK_INPLACE") || (vk_driver_is_turnip() && vk_turnip_path_on(g_settings.inplace_reads));
+                    bool inplace = getenv("LARECOMP_FEEDBACK_INPLACE") || g_settings.mali_feedback_inplace ||
+                                   (vk_driver_is_turnip() && vk_turnip_path_on(g_settings.inplace_reads));
                     g_inplace_copy = getenv("LARECOMP_FEEDBACK_COPY") != NULL || !inplace;
-                    LOG("[vk] targets a draw writes, sampled by it: %s (%s)\n", g_inplace_copy ? "copies" : "in place",
-                        g_settings.inplace_reads < 0 ? "automatic" : "settings");
+                    LOG("[vk] targets a draw writes, sampled by it: %s (%s%s)\n", g_inplace_copy ? "copies" : "in place",
+                        g_settings.inplace_reads < 0 ? "automatic" : "settings",
+                        g_settings.mali_feedback_inplace ? " / Mali" : "");
                 }
                 extern int vk_ab(const char *what);
                 if (!g_inplace_copy && bit && bit < 1u << 8 && AB("copy") != 1) {
@@ -7848,8 +7851,9 @@ static void split_long_pass(void) {
     static long split = -1;
     if (split < 0) {  // (3 ms by default; not on Qualcomm's driver, as LARECOMP_VK_CHUNK_US)
         extern bool vk_driver_is_qualcomm(void);
+        extern bool vk_driver_is_mali(void);
         const char *e = getenv("LARECOMP_VK_SPLIT_US");
-        split = e ? atol(e) : vk_driver_is_qualcomm() ? 0 : 3000;
+        split = e ? atol(e) : (vk_driver_is_mali() || vk_driver_is_qualcomm()) ? 0 : 3000;
     }
     extern bool vk_async_on(void);
     static unsigned n;  // (the clock every 32 draws: a clock read per draw showed up in the profile)

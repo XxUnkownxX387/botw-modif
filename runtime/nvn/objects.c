@@ -317,9 +317,10 @@ NVN(nvnSyncWait) {  // NVN_SYNC_WAIT_RESULT_ALREADY_SIGNALED
     static int env_lag = -2;
     if (env_lag == -2) env_lag = getenv("LARECOMP_SYNC_LAG") ? atoi(getenv("LARECOMP_SYNC_LAG")) : -1;
     int lag = env_lag >= 0 ? env_lag : g_settings.sync_lag ? 1 : 0;
-    if (g_settings.ultra_low_latency_pacer) {
-        lag = 0; // Ultra-low latency pacer minimizes queue lag for instantaneous response
-    }
+    // (the ultra-low latency pacer used to force lag = 0 here, cancelling the sync lag above: the game's reads of the
+    // GPU's results then came a frame late, and the fps that lag was holding back slipped to the 30 the pacer's queue
+    // wait left it at - the queue wait is what the pacer cuts, and the sync lag is the lever that keeps the fps. It no
+    // longer overrides it: the sync lag stays the player's choice, under Video > Sync lag / Ultra-Low Latency Pacer.)
     // Only once the world has been on screen for a while (LAG_SETTLE frames, the pause menu and map counting): with the
     // lag on from the start, some ponds stayed white for the whole session, and turned on later in play they were right
     // (2026-10-28, POCO F7 Ultra; issue #43 on an Adreno 740) - the water's colour taken once, while loading, from a GPU

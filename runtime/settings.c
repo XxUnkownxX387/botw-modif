@@ -68,6 +68,7 @@ Settings g_settings = {
     .zero_copy_uniforms = false,
     .dynamic_resolution_boost = true,
     .ultra_low_latency_pacer = true,
+    .mali_feedback_inplace = false, // (Mali / TBDR: in-place reads of a draw's target, the feedback loop; off: copies)
     .out_lines = OUT_AUTO,      // (POCO F7 Ultra, 3200x1440, 1.8.2's Great Plateau: GPU 22.8 ms a frame at the screen's,
                                 // 18.6 at 1080 lines with a larger scene - the final image's passes over 2.2x the pixels)
 #else
@@ -232,6 +233,7 @@ void settings_reset_defaults(void) {
     g_settings.zero_copy_uniforms = d->zero_copy_uniforms;
     g_settings.dynamic_resolution_boost = d->dynamic_resolution_boost;
     g_settings.ultra_low_latency_pacer = d->ultra_low_latency_pacer;
+    g_settings.mali_feedback_inplace = d->mali_feedback_inplace;
 #endif
 }
 
@@ -283,6 +285,7 @@ void settings_load(void) {
         else if (!strcmp(key, "zero_copy")) g_settings.zero_copy_uniforms = atoi(val) != 0;
         else if (!strcmp(key, "dyn_res_boost")) g_settings.dynamic_resolution_boost = atoi(val) != 0;
         else if (!strcmp(key, "low_latency_pacer")) g_settings.ultra_low_latency_pacer = atoi(val) != 0;
+        else if (!strcmp(key, "mali_feedback_inplace")) g_settings.mali_feedback_inplace = atoi(val) != 0;
         else if (!strcmp(key, "gpu_heap")) g_settings.gpu_heap = !strcmp(val, "auto") ? -1 : atoi(val) != 0;
         else if (!strcmp(key, "inplace_reads")) g_settings.inplace_reads = !strcmp(val, "auto") ? -1 : atoi(val) != 0;
         else if (!strcmp(key, "turnip_lrz")) g_settings.turnip_lrz = !strcmp(val, "auto") ? -1 : atoi(val) != 0;
@@ -389,9 +392,10 @@ void settings_save(void) {
     fprintf(f, "cutscenes_60 = %d\n", g_settings.event_fps_unlock);
     fprintf(f, "shader_int32 = %d\nsync_lag = %d\nnative_code = %d\nfiles_in_place = %d\n", g_settings.shader_int32,
             g_settings.sync_lag, g_settings.native_code, g_settings.files_in_place);
-    fprintf(f, "async_shader = %d\ntile_cache = %d\nzero_copy = %d\ndyn_res_boost = %d\nlow_latency_pacer = %d\n",
+    fprintf(f, "async_shader = %d\ntile_cache = %d\nzero_copy = %d\ndyn_res_boost = %d\nlow_latency_pacer = %d\n"
+                 "mali_feedback_inplace = %d\n",
             g_settings.async_shader_compile, g_settings.aggressive_tile_caching, g_settings.zero_copy_uniforms,
-            g_settings.dynamic_resolution_boost, g_settings.ultra_low_latency_pacer);
+            g_settings.dynamic_resolution_boost, g_settings.ultra_low_latency_pacer, g_settings.mali_feedback_inplace);
     static const char *const tri[] = {"auto", "0", "1"};  // (-1 / 0 / 1)
 #define TRI(v) tri[(v) < 0 ? 0 : (v) ? 2 : 1]
     fprintf(f, "gpu_heap = %s\ninplace_reads = %s\nturnip_lrz = %s\nlog_file = %d\ngpu_model = %s\n", TRI(g_settings.gpu_heap),
