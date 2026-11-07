@@ -528,6 +528,9 @@ static void create_image(NvnTexture *t, TexBackend *b) {
         VK_CHECK(vmaCreateImage(g_vk.vma, &ci, &ai, &b->image, &b->mem, NULL));
         depthfmt = false;
     }
+    VkImageMemoryRequirements imr;
+    vkGetImageMemoryRequirements(g_vk.dev, b->image, &imr);
+    b->alloc_bytes = imr.size;
     b->format = vf;
     b->width = tw; b->height = th; b->depth = depth; b->layers = layers; b->levels = levels; b->samples = samples;
     b->aspect = depthfmt ? aspect_of(t->format) : VK_IMAGE_ASPECT_COLOR_BIT;
@@ -680,13 +683,76 @@ static void live_remove(TexBackend *b) {
     b->reg = 0;
 }
 
+// The image's own bytes (its BC shadow's, when it has one): what the evictor holds the budget against.
+static uint64_t tex_img_bytes(TexBackend *b) {
+    if (!b || !b->mem) return 0;
+    return b->alloc_bytes;
+}
+
+// ---- texture residency (the evictor): the GPU's texture images are a large slice of the host RAM. On this 8 GB-class
+// phone with a 3.25 GB guest heap, the resident set of BOTW's textures (1850+ backends over a session, 1.7 GB on the GPU)
+// is the biggest lever left once the heap cannot be imported. Candidates: uploaded, not a GPU-written render target
+// (gpu_owned), not presented, not finalized; evicted coldest first (last_use) until the kept images fit the budget.
+// The image is freed and re-uploaded from guest memory (the source of truth) when the game draws the texture again.
+void vk_tex_evict(void) {
+    static uint64_t budget;
+    static int inited = -1, scanned;
+    static NvnTexture *cand[1024];
+    static uint64_t cold[1024];
+    static int nc;
+    if (inited < 0) { const char *e = getenv("LARECOMP_TEX_BUDGET"); inited = e != NULL; budget = inited ? strtoull(e, NULL, 0) : (256ull << 20); }
+    uint64_t f = vk_frame_counter();
+    if (scanned == (int)f) return;
+    scanned = (int)f;
+    nc = 0;
+    uint64_t used = 0;
+    for (int i = 0; i < g_nlive; i++) {
+        NvnTexture *t = g_live[i];
+        TexBackend *b = t->backend;
+        uint64_t bn = tex_img_bytes(b);
+        if (!bn) continue;
+        if (t->finalized || b->gpu_owned || b->presented) { used += bn; continue; }
+        if (!b->uploaded) continue;
+        if (nc < 1024) { cand[nc] = t; cold[nc] = b->last_use; nc++; }
+        used += bn;
+    }
+    if (used <= budget) return;
+    for (int i = 1; i < nc; i++) {  // insertion sort: coldest first
+        NvnTexture *t = cand[i];
+        uint64_t u = cold[i];
+        int j = i - 1;
+        while (j >= 0 && cold[j] > u) { cand[j + 1] = cand[j]; cold[j + 1] = cold[j]; j--; }
+        cand[j + 1] = t; cold[j + 1] = u;
+    }
+    for (int i = 0; i < nc; i++) {
+        if (used <= budget) break;
+        NvnTexture *t = cand[i];
+        TexBackend *b = t->backend;
+        uint64_t bn = tex_img_bytes(b);
+        if (bn <= 0) break;
+        destroy_image(b);
+        b->uploaded = false; b->dynamic = false; b->data_hash = 0; b->sample_hash = 0; b->checked_frame = 0;
+        b->full_frame = 0; b->frame_cleared = 0; b->rt_frame = 0; b->rt_oneoff = false; b->level_gen++;
+        b->tp = 0; b->tp_gen = 0; b->wgen = 0; b->presented = false;
+        pthread_mutex_lock(&pending_lock); free(b->pending_rgba); b->pending_rgba = NULL;
+        pthread_mutex_unlock(&pending_lock);
+        used -= bn;
+    }
+}
+
 static TexBackend *tex_backend(NvnTexture *t) {
     TexBackend *b = t->backend;
     if (b) {
-        if (rs_stale(b)) {  // output resolution changed: reallocate
+        if (rs_stale(b) || !b->image) {  // output resolution changed, or a later eviction dropped this image: reallocate
             destroy_image(b);
             create_image(t, b);
+            b->uploaded = false; b->dynamic = false; b->data_hash = 0; b->sample_hash = 0;
+            b->checked_frame = 0; b->full_frame = 0; b->frame_cleared = 0; b->rt_frame = 0; b->rt_oneoff = false;
+            b->level_gen++; b->tp = 0; b->tp_gen = 0; b->wgen = 0; b->presented = false;
+            pthread_mutex_lock(&pending_lock); free(b->pending_rgba); b->pending_rgba = NULL;
+            pthread_mutex_unlock(&pending_lock);
         }
+        b->last_use = vk_frame_counter();
         return b;
     }
     vk_collect_dead();
@@ -1429,6 +1495,7 @@ static BcShadow *bc_shadow_create(NvnTexture *t, TexBackend *b, VkFormat vf, uin
         return NULL;
     }
     vk_image_init_layout(vk_upload_cmd(), i->image, VK_IMAGE_ASPECT_COLOR_BIT);
+    { VkImageMemoryRequirements imr; vkGetImageMemoryRequirements(g_vk.dev, i->image, &imr); i->alloc_bytes = imr.size; }
     s->bsize = bsize;
     bc_shadow_fill(t, b, s, from);
     if (from) {  // (replaced: not dirty - vk_bc_shadows_resolve decoded it)

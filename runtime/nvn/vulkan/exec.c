@@ -959,10 +959,11 @@ VkDescriptorSet vk_alloc_set(VkDescriptorSetLayout layout) {
 }
 
 // ================================================================== transient memory ring
-// 64 MB host-visible chunks (device-local when the GPU exposes resizable BAR); a chunk is reused once every
+// 32 MB host-visible chunks (device-local when the GPU exposes resizable BAR); a chunk is reused once every
 // submission that allocated from it has completed, and given back after 10 s unused (down to RING_KEEP of them).
-#define CHUNK_SIZE (64ull << 20)
-#define RING_KEEP 4
+#define CHUNK_SIZE (32ull << 20)
+#define RING_KEEP 2               // (the chunks kept: the rest go back to the driver after 10 s idle)
+#define GCOPY_MAX (64ull << 20)  // (the largest a draw's copies are: above, the plain copies read zero)
 typedef struct { VkBuffer buf; VmaAllocation mem; uint8_t *ptr; uint64_t size, used, seq, frame; } Chunk;  // frame: last picked
 static Chunk *chunks;
 static int nchunks, active = -1;
@@ -1331,6 +1332,7 @@ const char *renderer_stats(void) {
         for (int i = 0; i < CMD_COUNT; i++) if (op_counts[i]) LOG(" %d:%llu", i, (unsigned long long)op_counts[i]);
         LOG("\n");
     }
+    vk_tex_evict();  // (textures.c: the GPU's texture images down to the RAM budget)
     snprintf(stats_text, sizeof stats_text,
              "%llu draws, %llu skipped, %llu passes, %llu dispatches (%llu chained), %llu flushes, wait %.0fms, compile %d (waited %.0fms), fbcopy %llu (read %llu, breaks %llu), upload %.1fMB, binds %llu pipe %llu sets",
              (unsigned long long)stat_draws, (unsigned long long)stat_skipped, (unsigned long long)stat_passes,
@@ -1538,7 +1540,7 @@ static uint64_t wb_max(void) {  // (LARECOMP_WRITEBACK_MAX=<bytes>: a larger lim
 // on the GPU: the CPU waited for the GPU ~12 times a second, and the game stuttered (2026-10-27, 8,700 waits in 20
 // minutes). Now four frames of small ones fit, in about as much memory as before.
 #define WB_SMALL 128
-#define WB_BIG 32
+#define WB_BIG 48   // (more big linear targets: the terrain's height tiles were out of their slots every other frame)
 #define WB_SLOTS (WB_SMALL + WB_BIG)
 typedef struct { uint64_t seq, addr, pitch, off, order; uint32_t wb, hb, bpb, bh, fmt, size; bool busy; } WbEntry;  // (pitch: linear rows, 0: block-linear; off, size: its slot in wb_buf; order: when queued)
 static WbEntry wb_ent[WB_SLOTS];
@@ -4604,9 +4606,9 @@ static void gcopy_retire(uint64_t done) {
 // and copied into the slot by the GPU at the start of the submission. What a shader stored also goes back to guest
 // memory once its submission is done (the game reads some of it as uniform buffers, vertices, textures), and to the
 // range's last-uploaded copy, so that isn't taken for the CPU's write.
-typedef struct { uint64_t lo, hi; bool store, learned; } GcRange;  // heap offsets, 256-aligned; learned: gres_learn
+typedef struct { uint64_t lo, hi; bool store, learned; uint64_t seen; } GcRange;  // heap offsets, 256-aligned; learned: gres_learn; seen: the frame it was learned at
 #define GA_SIZE (128ull << 20)  // (the minimum maxStorageBufferRange)
-#define GA_RES (48ull << 20)    // [0, GA_RES): resident slots; the rest: the ring
+#define GA_RES (64ull << 20)    // [0, GA_RES): resident slots; the rest: the ring (64 learned windows at 64 MB)
 #define GA_SEG (8ull << 20)
 #define GA_NRES 512
 typedef struct {
@@ -4864,7 +4866,7 @@ static GaRes *gres_get(uint64_t lo, uint64_t hi, bool create) {
 // the lighting's draws read the light count, next to a light list a compute dispatch writes, without having the list
 // bound (~950k reads a frame, all zero: a dark scene). The shaders record such misses (gmiss, at the arena's end); a
 // miss inside a resident range makes that range part of every table from then on, pointing at its slot.
-#define GL_MAX 16
+#define GL_MAX 64
 static GcRange gl_learned[GL_MAX];
 static int gl_n;
 
@@ -4890,14 +4892,26 @@ static void gres_learn(uint32_t off) {
         if (hi <= lo || !(in = gres_get(lo, hi, true))) return;
         in->learned = true;
     }
-    if (gl_n == GL_MAX) {  // (the oldest out - its window a spare, if only learning made it: ga_res_alloc)
-        for (int i = 0; i < ga_nres; i++) {
-            GaRes *e = &ga_res[i];
-            if (e->live && e->learned && !e->stored && e->lo == gl_learned[0].lo && e->hi == gl_learned[0].hi) e->spare = true;
+    if (gl_n == GL_MAX) {  // (the least recently learned out - its window a spare, if only learning made it: ga_res_alloc)
+        int victim = -1;
+        for (int i = 0; i < gl_n; i++) {  // the least recently learned first
+            if (gl_learned[i].store) continue;
+            int ai = -1;
+            for (int k = 0; k < ga_nres; k++)
+                if (ga_res[k].live && ga_res[k].lo == gl_learned[i].lo && ga_res[k].hi == gl_learned[i].hi) { ai = k; break; }
+            if (ai >= 0 && ga_res[ai].stored) continue;  // (a shader has stored into it: never let go)
+            if (victim < 0 || gl_learned[i].seen < gl_learned[victim].seen) victim = i;
         }
-        memmove(gl_learned, gl_learned + 1, sizeof gl_learned[0] * --gl_n);
+        if (victim >= 0) {
+            for (int i = 0; i < ga_nres; i++) {
+                GaRes *e = &ga_res[i];
+                if (e->live && e->learned && !e->stored && e->lo == gl_learned[victim].lo && e->hi == gl_learned[victim].hi) e->spare = true;
+            }
+            if (victim + 1 < gl_n) memmove(&gl_learned[victim], &gl_learned[victim + 1], sizeof gl_learned[0] * (size_t)(gl_n - victim - 1));
+            gl_n--;
+        }
     }
-    gl_learned[gl_n++] = (GcRange){in->lo, in->hi};
+    gl_learned[gl_n++] = (GcRange){in->lo, in->hi, false, true, renderer_present_count()};
     LOG("[vk] global memory: shaders reach heap %x outside their tables - %llx+%llx goes in every table\n", off,
         (unsigned long long)in->lo, (unsigned long long)(in->hi - in->lo));
 }
@@ -5238,13 +5252,13 @@ static void gcopy_prepare(unsigned stage_mask, bool store) {
             for (int i = 0; i < m && o < 440; i++)
                 o += snprintf(b + o, sizeof b - o, " %llx+%llx", (unsigned long long)r[i].lo, (unsigned long long)(r[i].hi - r[i].lo));
             LOG("[gcopy] frame %llu stages %x %s %d ranges %.1f KB:%s%s\n", (unsigned long long)renderer_present_count(),
-                stage_mask, store ? "STORE" : "load", m, total / 1024.0, b, total > CHUNK_SIZE ? " (TOO MUCH: skipped)" : "");
+                stage_mask, store ? "STORE" : "load", m, total / 1024.0, b, total > GCOPY_MAX ? " (TOO MUCH: skipped)" : "");
         }
     }
     if (m && gres_prepare(r, m, store)) return;  // (the arena: what shaders store stays on the GPU)
     memset(gmap_tab, 0, sizeof gmap_tab);
     gc_size = 0;
-    if (!m || total > CHUNK_SIZE) return;  // (too much: those loads read zero, as without this)
+    if (!m || total > GCOPY_MAX) return;  // (too much: those loads read zero, as without this)
     gc_span = vk_transient(total, 256);
     gc_size = total;
     uint64_t off = 0, seq = vk_pending_seq();
@@ -5276,7 +5290,7 @@ static void gcopy_prepare(unsigned stage_mask, bool store) {
 #define VC_PAGE 4096ull
 #define VC_TAB 8192                   // entries (open addressing)
 #define VC_MAX_RANGE (64ull << 20)    // larger bound ranges: read in place
-#define VC_BUDGET (768ull << 20)      // device-local bytes kept; the least recently used go first
+#define VC_BUDGET (256ull << 20)    // device-local bytes kept; the least recently used go first (a 8 GB-class phone)
 typedef struct { uint64_t lo, hi, used_seq; uint32_t gen, epoch; VkBuffer buf; VmaAllocation mem; bool gpu; } VcEnt;
 static VcEnt vc_tab[VC_TAB];
 static uint32_t vc_pend[VC_TAB];  // entries the pending submission draws from (vc_flush brings them up to date)

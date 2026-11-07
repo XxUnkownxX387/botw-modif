@@ -118,6 +118,8 @@ typedef struct TexBackend {
     uint64_t touched_frame, frame_cleared;
     uint64_t rt_frame;  // the last frame a draw rendered into it, + 1 (0: never) - exec.c rt_one_off
     bool rt_oneoff;     // (that frame's draws into it: not drawn into the frame before)
+    uint64_t alloc_bytes;  // (the image's memory, as the driver sized it - the texture evictor's budget: textures.c)
+    uint64_t last_use;  // (the frame it was last drawn or bound: the eviction's coldness)
     uint32_t level_gen;
     float sx, sy;
     void *pending_rgba;  // host-produced pixels (video) waiting to be uploaded on the render thread
@@ -134,6 +136,7 @@ typedef struct TexBackend {
 } TexBackend;
 
 TexBackend *vk_tex(NvnTexture *t, bool for_render);  // backend image (uploads CPU contents unless for_render)
+void vk_tex_evict(void);                            // (textures.c: the GPU's texture images down to the RAM budget)
 void vk_tex_upload_for_mips(NvnTexture *t);  // (drawn into at a level past 0: the CPU's contents first, if never uploaded)
 VkFormat vk_format(uint32_t nvn_format);
 bool vk_format_alpha_one(uint32_t nvn_format);
