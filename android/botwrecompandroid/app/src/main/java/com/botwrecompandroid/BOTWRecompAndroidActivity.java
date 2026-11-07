@@ -908,6 +908,9 @@ public class BOTWRecompAndroidActivity extends SDLActivity {
                     ". Copy the extracted game files to a local folder and select it again.");
             romfsFiles.add(k);
             romfsPaths.add(rel);
+            if (romfsFiles.size() % 500 == 0) {
+                nativeImportDetail("Scanning game files: " + romfsFiles.size() + " files found...");
+            }
         }
     }
 
