@@ -11,6 +11,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/resource.h>
+#ifndef PRIO_THREAD
+#define PRIO_THREAD PRIO_PROCESS
+#endif
 #include <unistd.h>
 #ifdef __ANDROID__
 #include <sys/mman.h>
