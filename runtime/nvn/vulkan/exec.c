@@ -313,7 +313,12 @@ void vk_pace_frame(void) {
     uint64_t p = now - last, wt = w - last_wait;
     bool first = !last;
     last = now, last_wait = w;
-    if (first || p > 100000000ull) return;  // (loading, a hitch: not a pace)
+    if (first || p > 100000000ull) {  // (loading, a hitch: not a pace) - the frames of a load / of a burst follow each
+        // other, and their length is not the world's: start the pace's history clean rather than letting the burst
+        // weigh on the moving average and the forced-mode recovery that follows the load
+        avg = 0, calm = 0;
+        return;
+    }
     double busy = (p > wt ? p - wt : 0) / 1e6;
 #ifdef __ANDROID__
     // LARECOMP_VK_ASYNC: the frame is two threads' work - the game's (busy) and the render thread's (its last frame)
