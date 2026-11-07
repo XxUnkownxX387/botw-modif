@@ -3081,7 +3081,13 @@ static void build_pipeline(void *arg) {
     }
 #endif
     VkResult r = vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, &pp->pipe);
-    if (r != VK_SUCCESS) {
+    if (r == VK_SUCCESS) {
+        static atomic_int pbuilds;
+        if (++pbuilds % 50 == 0) {
+            extern void vk_pipeline_cache_save(void);
+            vk_pipeline_cache_save();
+        }
+    } else {
         static int n;
         if (n++ < 10) LOG("[vk] pipeline creation failed: %d\n", r);
     }
