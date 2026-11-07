@@ -849,7 +849,8 @@ void plat_thread_unpin(void) {
 }
 
 static void pin_to_fastest_cores(void) {
-    if (!getenv("LARECOMP_PIN")) return;
+    const char *pin = getenv("LARECOMP_PIN");
+    if (pin && !strcmp(pin, "0")) return;
     long best = 0, mhz[CPU_SETSIZE] = {0};
     int n = 0;
     for (int c = 0; c < CPU_SETSIZE && c < 64; c++) {
