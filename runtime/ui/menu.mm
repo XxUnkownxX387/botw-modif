@@ -690,6 +690,14 @@ static void tab_display(void) {
                        "tile-based GPU's bandwidth-friendly cap."))
             g_settings.aniso_max = ai;
     }
+    {
+        // Mali / TBDR: the mip LOD bias the sampler is asked with (0: the game's own).
+        float lb = g_settings.lod_bias;
+        if (opt_slider("Texture LOD bias", &lb, 0, 2, 0.05, 0, "%.2f",
+                       "The mip level-of-detail bias asked of the textures (0: the game's own). > 0 lowers the mip "
+                       "level, easing the texture cache's pressure on Mali."))
+            g_settings.lod_bias = lb;
+    }
 #ifdef __ANDROID__
     opt_toggle("Sync lag", &g_settings.sync_lag, true,
                "The game starts its next frame while the GPU still finishes the last one: a few more fps. What the game reads "

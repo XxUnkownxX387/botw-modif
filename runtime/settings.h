@@ -34,6 +34,7 @@ typedef struct {
     bool reverb;         // room reverb effect
     bool movie_audio;
     float aniso_max;     // Mali / TBDR: the sampler anisotropy cap actually asked of the driver (0: the game's own)
+    float lod_bias;      // Mali / TBDR: the sampler mip LOD bias asked of the driver (0: the game's own)
     bool show_fps;
     bool motion;          // the phone's (or a controller's) gyroscope as the controller's motion sensor (hle/motion.c)
     int motion_source;    // whose: 0 automatic (a controller's once its gyroscope is alive), 1 the phone's, 2 a controller's

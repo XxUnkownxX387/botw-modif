@@ -1661,6 +1661,11 @@ static VkSampler make_sampler(const NvnSamplerDesc *d, bool compare) {
     if (mf <= 1) si.maxLod = si.minLod + 0.25f;  // not mipmapped: stay on the base level
     if (si.maxLod < si.minLod) si.maxLod = si.minLod;
     si.mipLodBias = d->lod_bias;
+    {
+        float lb = d->lod_bias;
+        if (g_vk.props.vendorID == 0x13B5 && g_settings.lod_bias > 0) lb = g_settings.lod_bias;
+        si.mipLodBias = lb;
+    }
     if (d->max_aniso > 1) {
         si.anisotropyEnable = VK_TRUE;
         float aniso = d->max_aniso;
