@@ -13,6 +13,8 @@
 #include "../settings.h"
 #include "../texpatch.h"
 
+static pthread_mutex_t pending_lock = PTHREAD_MUTEX_INITIALIZER;
+
 // ================================================================== formats
 typedef struct { VkFormat vf; uint8_t expand_rgb, alpha_one; } VkFmt;
 
@@ -528,7 +530,7 @@ static void create_image(NvnTexture *t, TexBackend *b) {
         VK_CHECK(vmaCreateImage(g_vk.vma, &ci, &ai, &b->image, &b->mem, NULL));
         depthfmt = false;
     }
-    VkImageMemoryRequirements imr;
+    VkMemoryRequirements imr;
     vkGetImageMemoryRequirements(g_vk.dev, b->image, &imr);
     b->alloc_bytes = imr.size;
     b->format = vf;
@@ -822,8 +824,6 @@ static uint64_t fnv_sample(const uint8_t *p, uint64_t n) {
     for (uint64_t i = 0; i < n; i += step) { h ^= p[i]; h *= 1099511628211ull; }
     return h ^ n;
 }
-
-static pthread_mutex_t pending_lock = PTHREAD_MUTEX_INITIALIZER;
 
 // Guest texels for a scaled image (the CPU filled a render target: the title screen's save pictures): they go into a
 // guest-size image of their own, then a filtered blit brings them to the allocation's size (SavageWindRecomp's).
@@ -1495,7 +1495,7 @@ static BcShadow *bc_shadow_create(NvnTexture *t, TexBackend *b, VkFormat vf, uin
         return NULL;
     }
     vk_image_init_layout(vk_upload_cmd(), i->image, VK_IMAGE_ASPECT_COLOR_BIT);
-    { VkImageMemoryRequirements imr; vkGetImageMemoryRequirements(g_vk.dev, i->image, &imr); i->alloc_bytes = imr.size; }
+    { VkMemoryRequirements imr; vkGetImageMemoryRequirements(g_vk.dev, i->image, &imr); i->alloc_bytes = imr.size; }
     s->bsize = bsize;
     bc_shadow_fill(t, b, s, from);
     if (from) {  // (replaced: not dirty - vk_bc_shadows_resolve decoded it)
