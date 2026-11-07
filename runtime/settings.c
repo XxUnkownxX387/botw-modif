@@ -34,6 +34,7 @@ Settings g_settings = {
     .volume = 1.0f,
     .reverb = true,
     .movie_audio = true,
+    .aniso_max = 4.0f, // (Mali / TBDR: the sampler anisotropy cap asked of the driver at most; 0: the game's own)
     .motion = true,
 #ifdef __ANDROID__
     .show_fps = true,  // (the performance overlay, ui/perf_overlay.mm: on until turned off in the menu)
@@ -215,6 +216,7 @@ void settings_reset_defaults(void) {
     g_settings.volume = d->volume;
     g_settings.reverb = d->reverb;
     g_settings.movie_audio = d->movie_audio;
+    g_settings.aniso_max = d->aniso_max;
     g_settings.show_fps = d->show_fps;
     g_settings.motion = d->motion;
     g_settings.motion_source = d->motion_source;
@@ -264,6 +266,7 @@ void settings_load(void) {
         else if (!strcmp(key, "volume")) g_settings.volume = (float)atof(val);
         else if (!strcmp(key, "reverb")) g_settings.reverb = atoi(val) != 0;
         else if (!strcmp(key, "movie_audio")) g_settings.movie_audio = atoi(val) != 0;
+        else if (!strcmp(key, "aniso_max")) g_settings.aniso_max = (float)atof(val);
         else if (!strcmp(key, "show_fps")) g_settings.show_fps = atoi(val) != 0;
         else if (!strcmp(key, "motion")) g_settings.motion = atoi(val) != 0;
         else if (!strcmp(key, "motion_source")) g_settings.motion_source = atoi(val) >= 0 && atoi(val) <= 2 ? atoi(val) : 0;
@@ -378,6 +381,7 @@ void settings_save(void) {
     fprintf(f, "volume = %.2f\n", g_settings.volume);
     fprintf(f, "reverb = %d\n", g_settings.reverb);
     fprintf(f, "movie_audio = %d\n", g_settings.movie_audio);
+    fprintf(f, "aniso_max = %.2f\n", g_settings.aniso_max);
     fprintf(f, "show_fps = %d\n", g_settings.show_fps);
     fprintf(f, "motion = %d\nmotion_source = %d\nmotion_flat = %d\n", g_settings.motion, g_settings.motion_source,
             g_settings.motion_flat);

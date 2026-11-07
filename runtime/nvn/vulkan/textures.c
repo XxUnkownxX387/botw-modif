@@ -10,6 +10,7 @@
 #include "vk.h"
 #include "../astc.h"
 #include "../renderer.h"
+#include "../settings.h"
 #include "../texpatch.h"
 
 // ================================================================== formats
@@ -1660,7 +1661,12 @@ static VkSampler make_sampler(const NvnSamplerDesc *d, bool compare) {
     if (mf <= 1) si.maxLod = si.minLod + 0.25f;  // not mipmapped: stay on the base level
     if (si.maxLod < si.minLod) si.maxLod = si.minLod;
     si.mipLodBias = d->lod_bias;
-    if (d->max_aniso > 1) { si.anisotropyEnable = VK_TRUE; si.maxAnisotropy = fminf(d->max_aniso, 16); }
+    if (d->max_aniso > 1) {
+        si.anisotropyEnable = VK_TRUE;
+        float aniso = d->max_aniso;
+        if (g_vk.props.vendorID == 0x13B5 && g_settings.aniso_max > 0) aniso = fminf(aniso, g_settings.aniso_max);
+        si.maxAnisotropy = fminf(aniso, 16);
+    }
     static float lodmin = -1;
     if (lodmin < 0) lodmin = getenv("LARECOMP_LOD_MIN") ? (float)atof(getenv("LARECOMP_LOD_MIN")) : 0;
     if (lodmin > 0 && mf > 1) si.minLod = fmaxf(si.minLod, lodmin);

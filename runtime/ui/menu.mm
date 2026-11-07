@@ -681,6 +681,15 @@ static void tab_display(void) {
                "Smooths jagged edges of the game image before it is scaled to the window. SMAA: finds the edges and "
                "blends only along them, so textures stay sharp. FXAA: a single, cheaper pass that also softens the image "
                "a little. Most useful at a lower internal resolution.");
+    {
+        // Mali / TBDR: the sampler anisotropy the driver is asked for at most (the Mali GPU is a tiler: 16x is a
+        // bandwidth cost - the cap keeps the grass and the terrain from eating it).
+        float ai = g_settings.aniso_max;
+        if (opt_slider("Anisotropic filtering", &ai, 1, 16, 1, 4, "%.0f",
+                       "The max anisotropy the sampler asks for (1: nearest, 16: the driver's own). 4 on Mali: the "
+                       "tile-based GPU's bandwidth-friendly cap."))
+            g_settings.aniso_max = ai;
+    }
 #ifdef __ANDROID__
     opt_toggle("Sync lag", &g_settings.sync_lag, true,
                "The game starts its next frame while the GPU still finishes the last one: a few more fps. What the game reads "
