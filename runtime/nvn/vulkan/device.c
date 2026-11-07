@@ -2159,10 +2159,11 @@ int ui_run(void) {
             static uint64_t last;
             static size_t saved;
             uint64_t now = SDL_GetTicks();
-            if (g_vk.dev && now - last > 30000 && !getenv("LARECOMP_VK_NO_PIPELINE_CACHE")) {
+            // (2026-11-07: 60 s / 256 KB - the save was frequent and small, but on the frame thread)
+            if (g_vk.dev && now - last > 60000 && !getenv("LARECOMP_VK_NO_PIPELINE_CACHE")) {
                 last = now;
                 size_t sz = 0;
-                if (vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, NULL) == VK_SUCCESS && sz > saved + 65536) {
+                if (vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, NULL) == VK_SUCCESS && sz > saved + 262144) {
                     vk_pipeline_cache_save();
                     saved = sz;
                     LOG("[vk] pipeline cache saved (%zu KB)\n", sz >> 10);

@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
 #include <unistd.h>
 #ifdef __ANDROID__
 #include <sys/mman.h>
@@ -1134,6 +1135,7 @@ static pthread_cond_t jobs_cond = PTHREAD_COND_INITIALIZER;
 
 static void *worker(void *a) {
     (void)a;
+    setpriority(PRIO_THREAD, (int)gettid(), 10);  // (2026-11-07: the compile jobs don't fight the game's frames for the CPU)
     for (;;) {
         pthread_mutex_lock(&jobs_lock);
         while (!jobs_head) pthread_cond_wait(&jobs_cond, &jobs_lock);
@@ -1161,6 +1163,7 @@ static pthread_mutex_t tjobs_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t tjobs_cond = PTHREAD_COND_INITIALIZER;
 static void *translator(void *a) {
     (void)a;
+    setpriority(PRIO_THREAD, (int)gettid(), 10);  // (2026-11-07: the compile jobs don't fight the game's frames for the CPU)
     for (;;) {
         pthread_mutex_lock(&tjobs_lock);
         while (!tjobs_head) pthread_cond_wait(&tjobs_cond, &tjobs_lock);
@@ -3064,9 +3067,6 @@ static void build_pipeline(void *arg) {
     if (g_settings.async_shader_compile) {
         pi.flags |= VK_PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT;
     }
-    if (g_settings.aggressive_tile_caching) {
-        // Mali tile caching optimization flag hint
-    }
     {   // (no dynamic rendering: against a compatible render pass, rpcompat.c)
         VkRenderPass crp = vk_rp_compat(k->ncolor, k->color, k->depth, k->stencil, ms.rasterizationSamples);
         if (crp) pi.pNext = ri.pNext, pi.renderPass = crp;
@@ -3082,11 +3082,24 @@ static void build_pipeline(void *arg) {
 #endif
     VkResult r = vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, &pp->pipe);
     if (r == VK_SUCCESS) {
+        // (2026-11-07: the driver pipeline cache was saved every 50 pipelines - a 7 MB write right mid-gameplay; now throttled)
+        static uint64_t last_save_t;
+        static pthread_mutex_t cache_save_lock = PTHREAD_MUTEX_INITIALIZER;
         static atomic_int pbuilds;
-        if (++pbuilds % 50 == 0) {
-            extern void vk_pipeline_cache_save(void);
-            vk_pipeline_cache_save();
+        pbuilds++;
+        pthread_mutex_lock(&cache_save_lock);
+        uint64_t now = plat_now_ns();
+        bool save = now - last_save_t > 60000000000ull;
+        if (save) {
+            size_t sz = 0;
+            if (vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, NULL) == VK_SUCCESS && sz > 262144) {
+                extern void vk_pipeline_cache_save(void);
+                vk_pipeline_cache_save();
+                LOG("[vk] pipeline cache saved (%zu KB)\n", sz >> 10);
+            }
+            last_save_t = now;
         }
+        pthread_mutex_unlock(&cache_save_lock);
     } else {
         static int n;
         if (n++ < 10) LOG("[vk] pipeline creation failed: %d\n", r);
@@ -8058,9 +8071,9 @@ static void exec_list(uint64_t handle, int depth) {
                              (unsigned long long)sz, sz && memcmp((const void *)(uintptr_t)dst, x, sz) ? "" : " (same)");
             if (sz && memcmp((const void *)(uintptr_t)dst, x, sz)) {
                 memcpy((void *)(uintptr_t)dst, x, sz);
-                if (!g_settings.zero_copy_uniforms) {
-                    guest_copy_invalidate(dst, dst + sz);
-                }
+                // (2026-11-07: the uniform upload always invalidates now - the "zero copy" setting was a flag that
+                // skipped the invalidate, leaving copies the GPU could still read stale: a placebo with a bug)
+                guest_copy_invalidate(dst, dst + sz);
             }
             break;
         }
