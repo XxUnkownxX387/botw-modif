@@ -4636,6 +4636,12 @@ static uint8_t *ga_ptr;
 static uint64_t ga_res_top, ga_head = GA_RES, ga_seg_seq[GA_SIZE / GA_SEG];
 static int gres_state = -1;
 static uint64_t stat_gres_res, stat_gres_sync;  // (resident ranges used, CPU-changed bytes uploaded)
+static uint64_t stat_gres_fail[5];  // (fell back to the plain copies: 0 no entry/space, 1 table full, 2 ring, 3 too big;
+                                     // 4 not a fall-back: a learned range left out for lack of table slots)
+// The arena declining a draw (no entry/space, the table full, the ring full, the range too big, a learned range left
+// out): the plain copies take over for it - the burst a post-load frame runs into, #89 / #131. Logged on the way, not
+// only through the LARECOMP_GMISS dump (whose window is 5 s): a fallback is a fallback.
+static void gres_fell(int k) { if (stat_gres_fail[k]++ == 0) LOG("[vk] global memory: fell back to the plain copies (no entry/space, table full, ring, too big, learned left out: %d)\n", k); }
 
 // The arena's memory not coherent (Mali: its cached type 0xb; no type is both cached and coherent): what the CPU
 // writes there is flushed before the next submission (ga_wrote, ga_flush_dirty), what the GPU stored is invalidated
@@ -4670,8 +4676,6 @@ static void ga_wrote(uint64_t off, uint64_t len) {
 static void ga_invalidate(const void *p, uint64_t len) {
     if (ga_noncoherent) vmaInvalidateAllocation(g_vk.vma, ga_mem, (VkDeviceSize)((const uint8_t *)p - ga_ptr), len);
 }
-static uint64_t stat_gres_fail[5];  // (fell back to the plain copies: 0 no entry/space, 1 table full, 2 ring, 3 too big;
-                                     // 4 not a fall-back: a learned range left out for lack of table slots)
 
 static bool gres_init(void) {
     if (gres_state >= 0) return gres_state;
@@ -5022,7 +5026,7 @@ static bool gres_prepare(const GcRange *r, int m, bool store) {
     int n = 0;
 #define GRES_ADD(at, len, off)                                                                                        \
     do {                                                                                                               \
-        if (n == GMAP_MAX) { stat_gres_fail[1]++; return false; }                                                      \
+        if (n == GMAP_MAX) { gres_fell(1); return false; }                                                                           \
         tab[n * 4 + 0] = (uint32_t)(at);                                                                               \
         tab[n * 4 + 1] = (uint32_t)(len);                                                                              \
         tab[n * 4 + 2] = (uint32_t)((off) >> 2);                                                                       \
@@ -5030,10 +5034,10 @@ static bool gres_prepare(const GcRange *r, int m, bool store) {
     } while (0)
     for (int i = 0; i < m; i++) {
         uint64_t lo = r[i].lo, hi = r[i].hi;
-        if (r[i].learned && n + need[i] + after[i + 1] > GMAP_MAX && AB("glskip") != 0) { stat_gres_fail[4]++; continue; }
+        if (r[i].learned && n + need[i] + after[i + 1] > GMAP_MAX && AB("glskip") != 0) { gres_fell(4); continue; }
         if (r[i].store) {  // a storing shader's bound ranges: resident from now on
             GaRes *e = gres_get(lo, hi, true);
-            if (!e) { stat_gres_fail[0]++; return false; }
+            if (!e) { gres_fell(0); return false; }
             e->stored = true;
             gres_sync(e);
             GRES_ADD(lo, hi - lo, e->off + (lo - e->lo));
@@ -5061,7 +5065,7 @@ static bool gres_prepare(const GcRange *r, int m, bool store) {
                 uint64_t end = hi < in->hi ? hi : in->hi;
                 if (end < hi && n == GMAP_MAX - 1) {  // (one table slot left: copy the whole tail rather than overflow)
                     uint64_t off = ga_load_copy(at, hi - at);
-                    if (off == ~0ull) { stat_gres_fail[hi - at > GA_SEG ? 3 : 2]++; return false; }
+                    if (off == ~0ull) { gres_fell(hi - at > GA_SEG ? 3 : 2); return false; }
                     GRES_ADD(at, hi - at, off);
                     break;
                 }
@@ -5073,7 +5077,7 @@ static bool gres_prepare(const GcRange *r, int m, bool store) {
             }
             if (next < hi && n == GMAP_MAX - 1) next = hi;
             uint64_t off = ga_load_copy(at, next - at);
-            if (off == ~0ull) { stat_gres_fail[next - at > GA_SEG ? 3 : 2]++; return false; }
+            if (off == ~0ull) { gres_fell(next - at > GA_SEG ? 3 : 2); return false; }
             GRES_ADD(at, next - at, off);
             at = next;
         }
