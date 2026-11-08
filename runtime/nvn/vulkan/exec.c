@@ -316,7 +316,10 @@ void vk_pace_frame(void) {
     if (first || p > 100000000ull) {  // (loading, a hitch: not a pace) - the frames of a load / of a burst follow each
         // other, and their length is not the world's: start the pace's history clean rather than letting the burst
         // weigh on the moving average and the forced-mode recovery that follows the load
-        avg = 0, calm = 0;
+        avg = 0, calm = 0, nover = 0;
+        memset(over, 0, sizeof over);
+        pace_slow = false;  // (the forced mode, if the Auto trial had picked it: it has nothing to work with yet - the
+                            // frames of the burst never filled its window, so it is stale, not chosen)
         return;
     }
     double busy = (p > wt ? p - wt : 0) / 1e6;
